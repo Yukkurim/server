@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Webhook 通知送信ツール</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f4f4f4;
+      color: #333;
+    }
+    header {
+      background: #3a3f51;
+      color: #fff;
+      padding: 1rem;
+      text-align: center;
+    }
+    .container {
+      max-width: 800px;
+      margin: 1rem auto;
+      background: #fff;
+      padding: 1rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    h2 {
+      border-left: 5px solid #3a3f51;
+      padding-left: 0.5rem;
+      margin-top: 2rem;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 1rem;
+    }
+    input[type="text"], textarea, select {
+      width: 100%;
+      padding: 0.6rem;
+      margin-top: 0.5rem;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+    .button {
+      background: #3a3f51;
+      color: white;
+      border: none;
+      padding: 0.7rem 1.2rem;
+      margin-top: 1rem;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .button:hover {
+      background: #2e3345;
+    }
+    .preview {
+      border: 1px solid #ccc;
+      padding: 1rem;
+      margin-top: 1rem;
+      background: #2c2f33;
+      color: white;
+      font-family: sans-serif;
+    }
+    .discord-msg {
+      background: #36393f;
+      padding: 1rem;
+      border-radius: 5px;
+      margin-bottom: 1rem;
+    }
+    .username {
+      color: #00b0f4;
+      font-weight: bold;
+    }
+    .mention {
+      color: #faa61a;
+      background: #3a3f51;
+      padding: 0 3px;
+      border-radius: 3px;
+    }
+    .embed {
+      margin-top: 0.5rem;
+      background: #2f3136;
+      border-left: 4px solid #3a3f51;
+      padding: 0.8rem;
+      border-radius: 4px;
+    }
+    .embed .title {
+      font-weight: bold;
+      color: #ffffff;
+      margin-bottom: 0.3rem;
+    }
+    .embed .description {
+      color: #ddd;
+      white-space: pre-wrap;
+    }
+    .webhooks {
+      margin-top: 1rem;
+    }
+    @media (max-width: 600px) {
+      .container {
+        margin: 0.5rem;
+        padding: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Webhook 通知送信ツール</h1>
+    <p>通知送信用メッセージを作成・送信・プレビュー</p>
+  </header>
+
+  <div class="container">
+    <h2>Webhook一覧</h2>
+    <div class="webhooks" id="webhooks"></div>
+    <button class="button" onclick="addWebhook()">＋ Webhook追加</button>
+
+    <h2>送信内容</h2>
+    <label for="webhookSelect">送信先Webhook</label>
+    <select id="webhookSelect"></select>
+
+    <label for="content">メッセージ本文</label>
+    <textarea id="content" placeholder="@everyone こんにちは！"></textarea>
+
+    <label for="embedTitle">Embedタイトル（任意）</label>
+    <input type="text" id="embedTitle">
+
+    <label for="embedDescription">Embed説明（任意）</label>
+    <textarea id="embedDescription"></textarea>
+
+    <button class="button" onclick="sendMessage()">送信</button>
+
+    <h2>プレビュー</h2>
+    <div class="preview" id="preview"></div>
+  </div>
+
+  <script>
+    const MAX_WEBHOOKS = 10;
+    const WEBHOOK_KEY = "webhookList";
+
+    function saveWebhooks(webhooks) {
+      localStorage.setItem(WEBHOOK_KEY, JSON.stringify(webhooks));
+    }
+
+    function loadWebhooks() {
+      const data = localStorage.getItem(WEBHOOK_KEY);
+      return data ? JSON.parse(data) : [];
+    }
+
+    function updateWebhookUI() {
+      const list = document.getElementById("webhooks");
+      const select = document.getElementById("webhookSelect");
+      list.innerHTML = "";
+      select.innerHTML = "";
+
+      const webhooks = loadWebhooks();
+      webhooks.forEach((w, i) => {
+        const row = document.createElement("div");
+        row.innerHTML = `
+          <strong>${w.name}</strong><br><small>${w.url}</small>
+          <button class="button" onclick="removeWebhook(${i})">削除</button>
+        `;
+        list.appendChild(row);
+
+        const option = document.createElement("option");
+        option.value = w.url;
+        option.textContent = w.name;
+        select.appendChild(option);
+      });
+    }
+
+    function addWebhook() {
+      const name = prompt("Webhook名を入力してください（例：公式通知）");
+      const url = prompt("Webhook URLを入力してください");
+      if (!name || !url) return alert("両方入力してください");
+
+      const webhooks = loadWebhooks();
+      if (webhooks.length >= MAX_WEBHOOKS) return alert("最大10件まで登録可能です");
+
+      webhooks.push({ name, url });
+      saveWebhooks(webhooks);
+      updateWebhookUI();
+    }
+
+    function removeWebhook(index) {
+      if (!confirm("このWebhookを削除しますか？")) return;
+      const webhooks = loadWebhooks();
+      webhooks.splice(index, 1);
+      saveWebhooks(webhooks);
+      updateWebhookUI();
+    }
+
+    function sendMessage() {
+      const url = document.getElementById("webhookSelect").value;
+      const content = document.getElementById("content").value;
+      const embedTitle = document.getElementById("embedTitle").value;
+      const embedDescription = document.getElementById("embedDescription").value;
+
+      const data = {
+        content: content,
+        embeds: embedTitle || embedDescription ? [{
+          title: embedTitle,
+          description: embedDescription,
+          color: 0x3a3f51
+        }] : []
+      };
+
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      }).then(res => {
+        if (res.ok) {
+          alert("送信成功！");
+        } else {
+          alert("送信失敗：" + res.statusText);
+        }
+      }).catch(err => alert("エラー：" + err.message));
+    }
+
+    function escapeHTML(str) {
+      return str.replace(/[&<>"']/g, tag => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      }[tag]));
+    }
+
+    function renderPreview() {
+      const content = escapeHTML(document.getElementById("content").value);
+      const embedTitle = escapeHTML(document.getElementById("embedTitle").value);
+      const embedDescription = escapeHTML(document.getElementById("embedDescription").value);
+
+      const mentionReplaced = content.replace(/@everyone/g, `<span class="mention">@everyone</span>`)
+                                     .replace(/@here/g, `<span class="mention">@here</span>`);
+
+      let html = `<div class="discord-msg">
+        <div class="username">通知BOT</div>
+        <div class="message">${mentionReplaced.replace(/\n/g, "<br>")}</div>`;
+
+      if (embedTitle || embedDescription) {
+        html += `
+          <div class="embed">
+            <div class="title">${embedTitle}</div>
+            <div class="description">${embedDescription.replace(/\n/g, "<br>")}</div>
+          </div>`;
+      }
+
+      html += `</div>`;
+      document.getElementById("preview").innerHTML = html;
+    }
+
+    ["content", "embedTitle", "embedDescription"].forEach(id => {
+      document.getElementById(id).addEventListener("input", renderPreview);
+    });
+
+    updateWebhookUI();
+    renderPreview();
+  </script>
+</body>
+</html>
